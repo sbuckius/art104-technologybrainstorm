@@ -90,7 +90,13 @@
       <div class="row" style="justify-content: space-between;">
         <div class="row">
           <span class="pill">You: <strong id="meId">…</strong></span>
-          <span class="pill">Unlocked: <strong id="unlockedIndex">…</strong> / 5</span>
+          
+<span class="pill">
+  Unlocked:
+  <strong id="unlockedIndex">…</strong> /
+  <strong id="totalQuestions"></strong>
+</span>
+
         </div>
         <div class="status" id="status">Connecting…</div>
       </div>
@@ -157,6 +163,7 @@ const firebaseConfig = {
       "Question 6: Think of a technology in your life that you think is useless. What is it? Why is it useless?"
     ];
 
+document.getElementById("totalQuestions").textContent = QUESTIONS.length;
     // ✅ Admin passcode (simple demo)
     const ADMIN_PASSCODE = "1234"; // change this
 
