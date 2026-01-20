@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Technology Brainstorm</title>
+  <style>
+    :root { --gap: 12px; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 18px; background: #fafafa; }
+    #wrap { max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 18px; font-weight: 900; }
+
+    .card {
+      background: #fff; border-radius: 14px; padding: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+      margin-bottom: 12px;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .muted { color: #555; font-size: 13px; }
+    .pill { display: inline-flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 999px; border: 1px solid #eee; background: #fafafa; font-size: 12px; }
+
+    button {
+      border: 0; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      background: #111; color: #fff; font-weight: 750;
+    }
+    button.secondary { background: #fff; color: #111; border: 1px solid #ddd; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    textarea {
+      width: 100%;
+      min-height: 84px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid #ddd;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .qTitle { font-size: 16px; font-weight: 900; margin: 0 0 8px; }
+    .qMeta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+
+    .answersHeader {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      margin-top: 10px; margin-bottom: 8px;
+    }
+    .answers {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: var(--gap);
+    }
+    .answer {
+      border: 1px solid #eee;
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    .answer .who { font-size: 12px; color: #666; margin-bottom: 6px; }
+    .answer .text { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+    .answer .time { font-size: 11px; color: #777; margin-top: 8px; }
+
+    .status { font-size: 13px; color: #444; }
+
+    /* Highlight newest unlocked question */
+    .current {
+      outline: 3px solid rgba(0,0,0,.12);
+    }
+
+    input[type="password"] {
+      padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; outline: none;
+      min-width: 220px;
+    }
+
+    .emptyState {
+      padding: 14px;
+      border: 1px dashed #ddd;
+      border-radius: 14px;
+      background: #fafafa;
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap">
+    <h1>Technology Brainstorm</h1>
+
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <div class="row">
+          <span class="pill">You: <strong id="meId">…</strong></span>
+          <span class="pill">Unlocked: <strong id="unlockedIndex">…</strong> / 5</span>
+        </div>
+        <div class="status" id="status">Connecting…</div>
+      </div>
+      <div class="muted" style="margin-top:10px;">
+        Only unlocked questions are shown. Once a question is unlocked, it stays visible forever (until reset).
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:900; margin-bottom: 8px;">Admin controls</div>
+      <div class="muted" style="margin-bottom: 10px;">
+        Enter the admin passcode to unlock “Next Question”. (Change the passcode in the code.)
+      </div>
+      <div class="row">
+        <input id="adminPass" type="password" placeholder="Admin passcode…" />
+        <button id="unlockBtn" class="secondary">Unlock Admin</button>
+        <button id="nextBtn" disabled>Unlock Next Question</button>
+        <button id="resetBtn" class="secondary">Reset Session</button>
+      </div>
+      <div class="muted" style="margin-top: 10px;">
+        “Reset Session” locks back to Q1 and clears ALL answers.
+      </div>
+    </div>
+
+    <div id="empty" class="emptyState" style="display:none;">
+      Waiting for Question 1 to be unlocked…
+    </div>
+
+    <div id="visibleQuestions"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import {
+      getDatabase, ref as dbRef, onValue, set, remove, serverTimestamp, get, push
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    // ✅ Replace with your Firebase config
+const firebaseConfig = {
+
+  apiKey: "AIzaSyAG4jVncDJ3j-_knM9OcewaFZdHHTLnpU8",
+
+  authDomain: "art104technology.firebaseapp.com",
+
+  projectId: "art104technology",
+
+  storageBucket: "art104technology.firebasestorage.app",
+
+  messagingSenderId: "683173570188",
+
+  appId: "1:683173570188:web:d13b904d36427e806e7da9",
+
+  measurementId: "G-MNKBXG96KB"
+
+};
+
+    // ✅ Your 5 questions
+    const QUESTIONS = [
+      "Question 1: Think of a time when you were amazed by a technology. What was it? Why were you amazed?",
+      "Question 2: Think of a time when you were scared by a technology. What was it? Why did it scare you?",
+      "Question 3: Think of a time when",
+      "Question 4: What is an example of",
+      "Question 5: What do you think"
+    ];
+
+    // ✅ Admin passcode (simple demo)
+    const ADMIN_PASSCODE = "1234"; // change this
+
+    // Init
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Simple client id (no auth)
+    const clientId = (() => {
+      const k = "multiAnswersClientId";
+      let v = localStorage.getItem(k);
+      if (!v) {
+        v = (crypto.randomUUID?.() || String(Math.random()).slice(2)).slice(0, 8);
+        localStorage.setItem(k, v);
+      }
+      return v;
+    })();
+
+    // UI
+    const meIdEl = document.getElementById("meId");
+    const unlockedIndexEl = document.getElementById("unlockedIndex");
+    const statusEl = document.getElementById("status");
+    const visibleQuestionsEl = document.getElementById("visibleQuestions");
+    const emptyEl = document.getElementById("empty");
+
+    const adminPass = document.getElementById("adminPass");
+    const unlockBtn = document.getElementById("unlockBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    meIdEl.textContent = clientId;
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    // Session refs
+    // unlockedUpTo is 0..4 (index of last unlocked question). Start at 0.
+    const unlockedRef = dbRef(db, "session/unlockedUpTo");
+
+    // Answers:
+    // answers/{qIndex}/{clientId}/{answerId} = { text, createdAt }
+    const answersRef = (q) => dbRef(db, `answers/${q}`);
+    const myAnswersRef = (q) => dbRef(db, `answers/${q}/${clientId}`);
+
+    let unlockedUpTo = -1; // IMPORTANT: start at -1 so Q1 is hidden until unlocked to 0
+    let adminUnlocked = false;
+
+    // Ensure session initialized
+    (async () => {
+      try {
+        const snap = await get(unlockedRef);
+        if (!snap.exists()) {
+          // Start with NO questions visible until admin unlocks first one
+          await set(unlockedRef, -1);
+        }
+        setStatus("Connected.");
+      } catch (e) {
+        console.error(e);
+        setStatus("Connection error (check config/rules).");
+      }
+    })();
+
+    // We will create question blocks only when they become visible.
+    // Store created blocks so we don't recreate.
+    const created = new Map(); // qIdx -> { card, textarea, countSpan }
+
+    function ensureQuestionBlock(qIdx) {
+      if (created.has(qIdx)) return;
+
+      const qText = QUESTIONS[qIdx];
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.id = `qCard${qIdx}`;
+
+      const meta = document.createElement("div");
+      meta.className = "qMeta";
+      meta.innerHTML = `<span class="pill">Question <strong>${qIdx + 1}</strong></span>`;
+
+      const title = document.createElement("div");
+      title.className = "qTitle";
+      title.textContent = qText;
+
+      const textarea = document.createElement("textarea");
+      textarea.maxLength = 400;
+      textarea.placeholder = "Type a response (max 400 chars)…";
+
+      const count = document.createElement("span");
+      count.className = "muted";
+      count.textContent = "0 / 400";
+      textarea.addEventListener("input", () => {
+        count.textContent = `${textarea.value.length} / 400`;
+      });
+
+      const submitBtn = document.createElement("button");
+      submitBtn.textContent = "Add Answer";
+
+      const clearMineBtn = document.createElement("button");
+      clearMineBtn.className = "secondary";
+      clearMineBtn.textContent = "Clear ALL My Answers (this question)";
+
+      const buttons = document.createElement("div");
+      buttons.className = "row";
+      buttons.style.marginTop = "10px";
+      buttons.appendChild(submitBtn);
+      buttons.appendChild(clearMineBtn);
+      buttons.appendChild(count);
+
+      const answersHeader = document.createElement("div");
+      answersHeader.className = "answersHeader";
+      answersHeader.innerHTML = `
+        <div>
+          <div style="font-weight:900;">Responses</div>
+          <div class="muted">Live responses for Question ${qIdx + 1}</div>
+        </div>
+        <div class="pill">Count: <strong id="count${qIdx}">0</strong></div>
+      `;
+
+      const answersGrid = document.createElement("div");
+      answersGrid.className = "answers";
+      answersGrid.id = `answers${qIdx}`;
+
+      card.appendChild(meta);
+      card.appendChild(title);
+      card.appendChild(textarea);
+      card.appendChild(buttons);
+      card.appendChild(answersHeader);
+      card.appendChild(answersGrid);
+
+      visibleQuestionsEl.appendChild(card);
+
+      // Submit: ADD (push) an answer (multiple allowed)
+      submitBtn.addEventListener("click", async () => {
+        const text = (textarea.value || "").trim().slice(0, 400);
+        if (!text) { setStatus(`Type a response for Q${qIdx + 1} first.`); return; }
+
+        try {
+          setStatus(`Submitting Q${qIdx + 1}…`);
+          await push(myAnswersRef(qIdx), { text, createdAt: serverTimestamp() });
+          textarea.value = "";
+          count.textContent = "0 / 400";
+          setStatus("Submitted.");
+        } catch (e) {
+          console.error(e);
+          setStatus("Submit failed (check DB rules).");
+        }
+      });
+
+      // Clear ALL my answers for this question
+      clearMineBtn.addEventListener("click", async () => {
+        if (!confirm(`Clear ALL your answers for Question ${qIdx + 1}?`)) return;
+        try {
+          setStatus(`Clearing your answers for Q${qIdx + 1}…`);
+          await remove(myAnswersRef(qIdx));
+          setStatus("Cleared.");
+        } catch (e) {
+          console.error(e);
+          setStatus("Clear failed.");
+        }
+      });
+
+      // Live: render all answers for this question (all users, all entries)
+      onValue(answersRef(qIdx), (snap) => {
+        const obj = snap.val() || {};
+        const flat = [];
+
+        for (const [userId, userAnswers] of Object.entries(obj)) {
+          if (!userAnswers) continue;
+          for (const [answerId, a] of Object.entries(userAnswers)) {
+            flat.push({
+              userId,
+              answerId,
+              text: a?.text || "",
+              createdAt: a?.createdAt || null
+            });
+          }
+        }
+
+        flat.sort((a, b) => {
+          const ta = typeof a.createdAt === "number" ? a.createdAt : -1;
+          const tb = typeof b.createdAt === "number" ? b.createdAt : -1;
+          if (ta !== tb) return tb - ta;
+          if (a.userId !== b.userId) return a.userId.localeCompare(b.userId);
+          return a.answerId.localeCompare(b.answerId);
+        });
+
+        renderAnswers(qIdx, flat);
+      });
+
+      created.set(qIdx, { card });
+    }
+
+    function renderAnswers(qIdx, items) {
+      const answersGrid = document.getElementById(`answers${qIdx}`);
+      const countEl = document.getElementById(`count${qIdx}`);
+      if (!answersGrid || !countEl) return;
+
+      answersGrid.innerHTML = "";
+      countEl.textContent = String(items.length);
+
+      if (!items.length) {
+        const div = document.createElement("div");
+        div.className = "muted";
+        div.textContent = "No responses yet.";
+        answersGrid.appendChild(div);
+        return;
+      }
+
+      for (const it of items) {
+        const card = document.createElement("div");
+        card.className = "answer";
+
+        const who = document.createElement("div");
+        who.className = "who";
+        who.textContent = `User: ${it.userId}`;
+
+        const text = document.createElement("div");
+        text.className = "text";
+        text.textContent = it.text;
+
+        const time = document.createElement("div");
+        time.className = "time";
+        time.textContent = (typeof it.createdAt === "number")
+          ? new Date(it.createdAt).toLocaleString()
+          : "";
+
+        card.appendChild(who);
+        card.appendChild(text);
+        if (time.textContent) card.appendChild(time);
+
+        answersGrid.appendChild(card);
+      }
+    }
+
+    // Live: unlocked state -> show only unlocked questions
+    onValue(unlockedRef, (snap) => {
+      const v = snap.val();
+      unlockedUpTo = (typeof v === "number" ? v : -1);
+      unlockedUpTo = Math.max(-1, Math.min(QUESTIONS.length - 1, unlockedUpTo));
+
+      unlockedIndexEl.textContent = String(Math.max(0, unlockedUpTo + 1)); // show 0..5
+
+      nextBtn.disabled = !adminUnlocked || unlockedUpTo >= QUESTIONS.length - 1;
+
+      // Empty state
+      emptyEl.style.display = (unlockedUpTo < 0) ? "block" : "none";
+
+      // Ensure blocks exist up to unlockedUpTo
+      for (let i = 0; i <= unlockedUpTo; i++) {
+        ensureQuestionBlock(i);
+      }
+
+      // Highlight newest unlocked (current)
+      for (const [idx, obj] of created.entries()) {
+        obj.card.classList.toggle("current", idx === unlockedUpTo);
+      }
+    });
+
+    // Admin unlock
+    unlockBtn.addEventListener("click", () => {
+      adminUnlocked = (adminPass.value === ADMIN_PASSCODE);
+      if (adminUnlocked) {
+        setStatus("Admin unlocked.");
+        nextBtn.disabled = unlockedUpTo >= QUESTIONS.length - 1;
+      } else {
+        setStatus("Wrong passcode.");
+        nextBtn.disabled = true;
+      }
+    });
+
+    // Unlock next question (admin)
+    nextBtn.addEventListener("click", async () => {
+      if (!adminUnlocked) return;
+      const next = Math.min(QUESTIONS.length - 1, unlockedUpTo + 1);
+      try {
+        setStatus("Unlocking next question…");
+        await set(unlockedRef, next);
+        setStatus(`Unlocked Question ${next + 1}.`);
+        // Scroll to newly revealed question
+        setTimeout(() => {
+          document.getElementById(`qCard${next}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
+      } catch (e) {
+        console.error(e);
+        setStatus("Failed to unlock (check rules).");
+      }
+    });
+
+    // Reset session (admin)
+    resetBtn.addEventListener("click", async () => {
+      if (!adminUnlocked) { setStatus("Unlock admin to reset."); return; }
+      if (!confirm("Reset hides all questions and clears ALL answers. Continue?")) return;
+      try {
+        setStatus("Resetting…");
+        await set(unlockedRef, -1);
+        await remove(dbRef(db, "answers"));
+        // Clear UI blocks
+        visibleQuestionsEl.innerHTML = "";
+        created.clear();
+        setStatus("Reset complete.");
+      } catch (e) {
+        console.error(e);
+        setStatus("Reset failed.");
+      }
+    });
+  </script>
+</body>
+</html>
